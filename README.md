@@ -7,3 +7,5 @@
 - с расширением .tfvars
 - с именами override.tf, override.tf.json или заканчивающиеся на '_override.tf', '_override.tf.json'
 - с именами .terraformrc, terraform.rc
+
+One more line
