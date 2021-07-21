@@ -1,105 +1,77 @@
-### 2. Сколько действительно независимых каналов есть в разделяемой среде WiFi при работе на 2.4 ГГц?
+### 2. Запустить Vault-сервер в dev-режиме
 
-3 канала шириной по 20 МГц - 1, 6 и 11.  
-В частотном диапазоне 5 ГГц доступно 23 неперекрывающихся канала по 20 МГц.
+**$ vault server -dev -dev-listen-address="0.0.0.0:8200"**  
 
-### 3. Какому производителю принадлежит MAC 38:f9:d3:55:55:79?
+Стартуем новое окно терминала и выполняем следующие команды для передачи valut клиенту параметров vault сервера:  
+**$ export VAULT_ADDR='http://0.0.0.0:8200'**  
+**$ export VAULT_TOKEN="s.ylVfdbyr9ARr9XTBqevOAvb7"**
 
-Apple, Inc.
+### 3. Используя PKI Secrets Engine, создайте Root CA и Intermediate CA.
 
-### 4. Каким будет payload TCP сегмента, если Ethernet MTU задан в 9001 байт, размер заголовков IPv4 – 20 байт, а TCP – 32 байта?
+Сначала создаем Root CA согласно инструкции  
 
-Размер payload можно рассчитать как 9001-20-32=8949 байт
+Активация PKI Secrets Engine в неймспейсе pki  
+**$ vault secrets enable pki**  
+**Success! Enabled the pki secrets engine at: pki/**  
 
-### 5. Может ли во флагах TCP одновременно быть установлены флаги SYN и FIN при штатном режиме работы сети?
+Установка максимального времени жизни сертификатов в 10 лет  
+**$ vault secrets tune -max-lease-ttl=87600h pki**  
+**Success! Tuned the secrets engine at: pki/**  
 
-Нет, т.к. эти флаги отвечают за противоположные действия - SYN за установление TCP соединения, FYN - за его закрытие
+Аналогично создаем Intermediate CA с неймспейсом pki_int и максимальным временем жизни сертификатов 5 лет  
+**$ vault secrets enable -path=pki_int pki**  
+**$ vault secrets tune -max-lease-ttl=43800h pki_int**  
 
-### 6. Почему в State присутствует только UNCONN, и может ли там присутствовать, например, TIME-WAIT?
+Генерация файла сертификата для Root CA  
+**$vault write -field=certificate pki/root/generate/internal common_name="netology.example.com" ttl=87600h > CA_cert.crt**  
+**$ ls**  
+**CA_cert.crt**  
 
-UDP протокол работает без установления сессии, поэтому UDP сокеты находятся в состоянии UNCONN. По этой же причине UDP сокет не может находиться в состоянии TIME-WAIT, т.к. оно применяется при закрытии сессии.
+Генерация csr для Intermediate CA  
+**$ vault write -format=json pki_int/intermediate/generate/internal common_name="netology.example.com Intermediate Authority" | jq -r '.data.csr' > pki_intermediate.csr**  
+**$ls**  
+**CA_cert.crt  pki_intermediate.csr** 
 
-### 7. Опишите в каких состояниях будет находиться TCP соединение в каждый момент времени на клиенте и на сервере при завершении
+На основе полученного csr генерируем сертификат, подписанный ключом Root CA  
+**vault write -format=json pki/root/sign-intermediate csr=@pki_intermediate.csr format=pem_bundle ttl="43800h" | jq -r '.data.certificate' > intermediate.cert.pem**  
+**$ ls**  
+**CA_cert.crt  pki_intermediate.csr  intermediate.cert.pem** 
+
+Импортируем получившийся сертификат в Intermediate CA  
+**$ vault write pki_int/intermediate/set-signed certificate=@intermediate.cert.pem**  
+**Success! Data written to: pki_int/intermediate/set-signed**  
+
+### 4. Подпишите Intermediate CA csr на сертификат для тестового домена
+
+Создаем роль для тестового домена  
+**$ vault write pki_int/roles/netology-example-dot-com allowed_domains="netology.example.com" allow_subdomains=true max_ttl="720h"**  
+**Success! Data written to: pki_int/roles/netology-example-dot-com**  
+
+Генерируем сертификат для тестового домена  
+**$ vault write pki_int/issue/netology-example-dot-com common_name="netology.example.com" ttl="24h"**  
+Выведенные в консоль ключи сохраняем в файлы netology.example.com.key (приватный ключ) и netology.example.com.pem (подписанный Intermediate CA сертификат с публичным ключом)
+
+### 5. Поднимите на localhost nginx, сконфигурируйте default vhost для использования подписанного Vault Intermediate CA сертификата и выбранного вами домена.
+
+В файл конфигурации дефолтного хоста добавляем следующие строки
 ```
-   Клиент             Сервер  
-ESTABLISHED         ESTABLISHED  
-FIN_WAIT1   ->FIN-> CLOSE_WAIT  
-FIN_WAIT2   <-ACK<- CLOSE_WAIT  
-TIME_WAIT   <-FIN<- LAST_ACK  
-TIME_WAIT   ->ACK-> CLOSED  
-CLOSED
-```
-### 8. Каким будет теоретическое максимальное число соединений, которое параллельно может установить клиент с одного IP адреса к серверу с одним IP адресом?
+listen 443 ssl;
+listen [::]:443 ssl;
 
-65536 - по количеству возможных портов
-
-### Сколько соединений сможет обслужить сервер от одного клиента? А если клиентов больше одного?
-
-От одного клиента 65536, опять же, по количеству возможных портов. Если клиентов больше одного, то теоретически возможно по 65536 соединений на каждого клиента.
-
-### 9. Может ли сложиться ситуация, при которой большое число соединений TCP на хосте находятся в состоянии TIME-WAIT? Если да, то является ли она хорошей или плохой?
-
-При закрытии соединения его инициатор на последнем шаге отправляет сообщение ACK и переходит в состояние TIME_WAIT, в котором находится по стандарту 2 * MSL (maximum segment lifetime). На практике это время составляет 1-2 минуты. 
-Поэтому при большом количестве часто открываемых/закрываемых соединений в состоянии TIME_WAIT может одновременно оказаться большое число TCP соединений. Это не хорошая ситуация, т.к. порт соединения при этом не может быть использован, что может привести к ошибке при попытке установления новых соединений.
-
-### 10. Чем особенно плоха фрагментация UDP относительно фрагментации TCP?
-
-UDP протокол не гарантирует доставки сообщения в отличие от TCP. Следовательно, чем больше фрагментов, тем вероятнее потеря части сообщения
-
-### 11. Если бы вы строили систему удаленного сбора логов, какой протокол транспортного уровня вы выбрали бы и почему?
-
-Лучше использовать протокол TCP для гаратнированной доставки логов в систему сбора. Проблему меньшей скорости TCP протокола можно решить, группируя логируемые сообщения в источнике для отправки их пачкой, а не по одному.
-
-### 12. Сколько портов TCP находится в состоянии прослушивания на вашей виртуальной машине с Ubuntu, и каким процессам они принадлежат?
-
-Данную информацию можно получить командой  
-**# ss -ltp**  
-```
-State  Recv-Q Send-Q Local Address:Port     Peer Address:Port Process
-LISTEN 0      4096   127.0.0.53%lo:domain        0.0.0.0:*     users:(("systemd-resolve",pid=547,fd=13))
-LISTEN 0      128          0.0.0.0:ssh           0.0.0.0:*     users:(("sshd",pid=796,fd=3))
-LISTEN 0      4096         0.0.0.0:sunrpc        0.0.0.0:*     users:(("rpcbind",pid=546,fd=4),("systemd",pid=1,fd=35))
-LISTEN 0      128             [::]:ssh              [::]:*     users:(("sshd",pid=796,fd=4))
-LISTEN 0      4096            [::]:sunrpc           [::]:*     users:(("rpcbind",pid=546,fd=6),("systemd",pid=1,fd=37))
+ssl_certificate /usr/share/nginx/html/netology.example.com.pem;
+ssl_certificate_key /usr/share/nginx/html/netology.example.com.key;
 ```
 
-Либо командой 
-**# lsof -ni | grep LISTEN**  
-```
-systemd      1            root   35u  IPv4  15556      0t0  TCP *:sunrpc (LISTEN)
-systemd      1            root   37u  IPv6  15560      0t0  TCP *:sunrpc (LISTEN)
-rpcbind    546            _rpc    4u  IPv4  15556      0t0  TCP *:sunrpc (LISTEN)
-rpcbind    546            _rpc    6u  IPv6  15560      0t0  TCP *:sunrpc (LISTEN)
-systemd-r  547 systemd-resolve   13u  IPv4  22799      0t0  TCP 127.0.0.53:domain (LISTEN)
-sshd       796            root    3u  IPv4  25000      0t0  TCP *:ssh (LISTEN)
-sshd       796            root    4u  IPv6  25002      0t0  TCP *:ssh (LISTEN)
-```
-Отсюда следует, что на машине есть 5 TCP портов в состоянии прослушивания. Их используют следующие процессы: systemd, systemd-resolve, sshd, rpcbind.
+### 6. Добейтесь безошибочной с точки зрения HTTPS работы curl на ваш тестовый домен
 
-### 13. Какой ключ нужно добавить в tcpdump, чтобы он начал выводить не только заголовки, но и содержимое фреймов в текстовом виде? А в текстовом и шестнадцатиричном?
+Модифицируем /ets/hosts для доступа к хосту по имени  
+**$ echo 127.0.0.1 netology.example.com >> /etc/hosts** 
 
-Для вывода в текстовом виде:  
-**# tcpdump -A**  
+Добавляем сертификат Intermediate CA в доверенные (предварительно изменим расширение pem файла на crt, чтобы команда update-ca-certificates обработала сертификат)  
+**$ cp intermediate.cert.pem intermediate.cert.crt**  
+**$ ln intermediate.cert.crt /usr/local/share/ca-certificates/intermediate.cert.crt**  
+**$ update-ca-certificates**
 
-Для вывода в текстовом и шестнадцатиричном виде:  
-**# tcpdump -X**  
-
-### 14. Попробуйте собрать дамп трафика с помощью tcpdump на основном интерфейсе вашей виртуальной машины и посмотреть его через tshark или Wireshark
-
-Собираем трафик в файл:  
-**# tcpdump -c 100 -w dmp.pcap**  
-
-Просматриваем сформированный файл (предварительно установив tshark через apt-get):  
-**# tshark -r dmp.pcap -V**  
-
-В описании каждого пакета в разделе Internet Protocol можно увидеть состояние флагов, относящихся к данному протоколу  
-```
-Flags: 0x4000, Don't fragment
-0... .... .... .... = Reserved bit: Not set
-.1.. .... .... .... = Don't fragment: Set
-..0. .... .... .... = More fragments: Not set
-``` 
-
-Из строки  
-**Ethernet II, Src: PcsCompu_e3:90:c5 (08:00:27:e3:90:c5), Dst: RealtekU_12:35:02 (52:54:00:12:35:02)**  
-видно полное название стандарта Ethernet - Ethernet II. Также здесь видны MAC адреса источника и адресата запроса, в том числе с расшифровкой OUI - PcsCompu и RealtekU.
+Проверяем работоспособность хоста  
+**$ curl -I -s https://netology.example.com | head -n1**  
+**HTTP/1.1 200 OK**
