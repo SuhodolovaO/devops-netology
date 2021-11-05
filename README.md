@@ -1,83 +1,188 @@
 ### Задача 1
-Запуск контейнера postgres_db с расшаренной директорией для volume и директорией, содержащий дамп БД  
-**# docker run --name postgres_db -v /var/lib/docker/volumes/vagrant_postgres_data/_data:/var/lib/postgres -v /home/vagrant:/home -e POSTGRES_PASSWORD=postgres -d postgres**  
 
-Подключение к postgres в командной строке запущенного контейнера  
-**psql -U postgres**  
+Измененный Dockerfile
+```
+FROM archlinux
 
-Управляющие команды:  
-вывод списка БД -      \l[+]   [PATTERN]  
-подключение к БД -     \c[onnect] {[DBNAME|- USER|- HOST|- PORT|-] | conninfo}  
-вывода списка таблиц - \dt[S+] [PATTERN]  
-выхода из psql         \q  
-вывода описания содержимого таблиц - \d[S+]  NAME  
+RUN pacman -Syu --noconfirm
+RUN pacman -S ponysay --noconfirm
+
+CMD ["/usr/bin/ponysay", "Hey, netology"]
+```
+
+Запуск билда образа  
+**# docker build -t pony_arch -f dockerfile .**  
+
+Запуск контейнера в интерактивном режиме, который удалится после завершения работы  
+**# docker run -ti --rm --name pony pony_arch**  
+
+Вывод программы  
+https://github.com/SuhodolovaO/devops-netology/blob/main/pony.png
+
+Создание образа с тегом и отправка в репозиторий  
+**# docker image tag pony_arch suhodolovao/netology:dz-5.4-pony**  
+**# docker image push suhodolovao/netology:dz-5.4-pony**  
+
+Ссылка на образ  
+https://hub.docker.com/layers/suhodolovao/netology/dz-5.4-pony/images/sha256-8b15c3c6900d9782eb6668980e5c469983abd20c0e5c94e79dc0fc0ffe7e5642
 
 ### Задача 2
-Создание БД  
-**postgres=# CREATE DATABASE test_database;**  
 
-Восстановление из бекапа  
-**# psql -U postgres test_database < /home/test_dump.sql**  
+**Jenkins на amazoncorreto**  
 
-Запуск сбора статистики  
-**test_database=# ANALYZE orders;**  
-**INFO:  analyzing "public.orders"**  
-**INFO:  "orders": scanned 1 of 1 pages, containing 8 live rows and 0 dead rows; 8 rows in sample, 8 estimated total rows**  
-
-Поиск столбца с наибольшим средним значением размера элементов в байтах  
-**test_database=# SELECT attname, avg_width FROM pg_stats WHERE tablename='orders' ORDER BY avg_width DESC LIMIT 1;**  
-Результат
+Dockerfile
 ```
- attname | avg_width
----------+-----------
- title   |        16
+FROM amazoncorretto
+
+ARG JENKINS_VERSION
+ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
+
+RUN mkdir -p /usr/share/jenkins \
+ && curl -fsSL ${JENKINS_URL} -o /usr/share/jenkins/jenkins.war
+
+EXPOSE 8080
+
+CMD ["java", "-jar", "/usr/share/jenkins/jenkins.war"]
 ```
+
+Команда для билда  
+**# docker build --build-arg JENKINS_VERSION=2.303.2 -t jenkins:ver1 -f dockerfile_jenkins_amazon .**  
+
+Команда запуска  
+**# docker run -ti -p 8080:8080 --name ja jenkins:ver1**  
+
+Вывод в логах  
+https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_logs_ver1.png  
+
+Вывод в браузере  
+https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_screen_ver1.png  
+
+Ссылка на образ  
+https://hub.docker.com/layers/suhodolovao/netology/dz-5.4-ver1/images/sha256-d484c74177099beb580214221c986dcc2bd6588b1eebfe75b4f880d22e2fba0b
+
+
+
+**Jenkins на ubuntu**  
+
+Dockerfile
+```
+FROM ubuntu:latest
+
+ARG JENKINS_VERSION
+ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
+
+RUN apt-get update \
+ && apt-get install -y openjdk-11-jdk \
+ && apt-get install -y curl \
+ && mkdir -p /usr/share/jenkins \
+ && curl -fsSL ${JENKINS_URL} -o /usr/share/jenkins/jenkins.war
+
+EXPOSE 8080
+
+CMD ["java", "-jar", "/usr/share/jenkins/jenkins.war"]
+```
+
+Команда для билда  
+**# docker build --build-arg JENKINS_VERSION=2.303.2 -t jenkins:ver2 -f dockerfile_jenkins_ubuntu .**  
+
+Команда запуска  
+**# docker run -ti -p 5432:8080 --name jenkins2 jenkins:ver2**  
+
+Вывод в логах  
+https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_logs_ver2.png  
+
+Вывод в браузере  
+https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_screen_ver2.png  
+
+Ссылка на образ  
+https://hub.docker.com/layers/suhodolovao/netology/dz-5.4-ver2/images/sha256-23f420a5c133c10b11d4807b34a014fb0d5e48439369157ee3bfbeb18a417e15
 
 ### Задача 3
-Шардинг таблицы orders на orders_1, orders_2  
+Dockerfile
 ```
-BEGIN;
+FROM node:latest
 
-CREATE TABLE orders_1(CHECK(price>499)) INHERITS(orders);
-CREATE TABLE orders_2(CHECK(price<=499)) INHERITS(orders);
+WORKDIR /usr/share/simplicitesoftware
 
-CREATE RULE orders_to_1 AS 
-ON INSERT TO orders WHERE price>499 
-DO INSTEAD 
-INSERT INTO orders_1 VALUES (NEW.*);
+RUN curl -fsSL https://codeload.github.com/simplicitesoftware/nodejs-demo/zip/refs/heads/master -o master.zip \
+ && unzip master.zip
 
-CREATE RULE orders_to_2 AS 
-ON INSERT TO orders WHERE price<=499 
-DO INSTEAD 
-INSERT INTO orders_2 VALUES (NEW.*);
+WORKDIR /usr/share/simplicitesoftware/nodejs-demo-master
 
-CREATE TEMP TABLE orders_temp ON COMMIT DROP
-AS SELECT * FROM orders;
+RUN npm install
 
-DELETE FROM orders;
+EXPOSE 3000
 
-INSERT INTO orders_1 SELECT * FROM orders_temp WHERE price>499;
-INSERT INTO orders_2 SELECT * FROM orders_temp WHERE price<=499;
-
-COMMIT;
+ENTRYPOINT ["npm"]
+CMD ["start"]
 ```
 
-Для избежания ручного переноса данных можно было при создании таблицы orders применить декларативное партиционирование.
+Билд образа и запуск контейнера simplicite  
+**# docker build -t simplicite -f dockerfile_simplicite .**  
+**# docker run -d -p 3000:3000 --name simplicite simplicite**  
+
+Запуск ubuntu  
+**# docker run -d -ti --name ubuntu ubuntu:latest**  
+
+Создание сети  
+**# docker network create test-net**  
+**# docker network connect test-net simplicite**  
+**# docker network connect test-net ubuntu**  
+
+Получившаяся конфигурация сети test-net  
 ```
-CREATE TABLE orders (
-    id integer NOT NULL,
-    title character varying(80) NOT NULL,
-    price integer DEFAULT 0
-)
-PARTITION BY RANGE (price);
-
-CREATE TABLE orders_1 PARTITION OF orders FOR VALUES FROM (500) to (MAXVALUE);
-CREATE TABLE orders_2 PARTITION OF orders FOR VALUES FROM (0) to (500);
+# docker network inspect test-net
+[
+    {
+        "Name": "test-net",
+        "Id": "bf9efd4455293b1e388637791c22b3bc8bc44258d32c4efa90de59947b57bfc0",
+        "Created": "2021-11-04T18:25:35.948463251Z",
+        "Scope": "local",
+        "Driver": "bridge",
+        "EnableIPv6": false,
+        "IPAM": {
+            "Driver": "default",
+            "Options": {},
+            "Config": [
+                {
+                    "Subnet": "172.18.0.0/16",
+                    "Gateway": "172.18.0.1"
+                }
+            ]
+        },
+        "Internal": false,
+        "Attachable": false,
+        "Ingress": false,
+        "ConfigFrom": {
+            "Network": ""
+        },
+        "ConfigOnly": false,
+        "Containers": {
+            "47499c885505b6c53e0dcaeabe57051b5a6ceaf3f017a6db95e2f9f1bc8ec849": {
+                "Name": "simplicite",
+                "EndpointID": "cfffd79accd91fb157352bf007773319262746c19e9cd757cab20218ecfe10a4",
+                "MacAddress": "02:42:ac:12:00:02",
+                "IPv4Address": "172.18.0.2/16",
+                "IPv6Address": ""
+            },
+            "6b5691c09c912f7f725fd3cfb3e962a366d0a859fa8f9eadbc0131a84a5597b1": {
+                "Name": "ubuntu",
+                "EndpointID": "77ec324c5134ba93a50caff9670348d3a08882957b45fe38c4bc006459ca7785",
+                "MacAddress": "02:42:ac:12:00:03",
+                "IPv4Address": "172.18.0.3/16",
+                "IPv6Address": ""
+            }
+        },
+        "Options": {},
+        "Labels": {}
+    }
+]
 ```
 
-### Задача 4
-Создание дампа  
-**# pg_dump test_database > /home/test_database_backup.sql -U postgres**  
+Обращение к приложению simplicite из контейнера ubuntu  
+**# docker exec -ti ubuntu bash**  
+**# apt-get update && apt-get install curl**  
+**# curl 172.18.0.2:3000 | head -c 500**
 
-Добавление уникальности для поля title  
-**postgres=# ALTER TABLE orders ADD CONSTRAINT title_unique UNIQUE (title);**
+Результат
+https://github.com/SuhodolovaO/devops-netology/blob/main/networking.png
