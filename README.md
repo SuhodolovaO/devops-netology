@@ -1,188 +1,277 @@
 ### Задача 1
 
-Измененный Dockerfile
+Dockerfile
 ```
-FROM archlinux
+FROM centos:7
 
-RUN pacman -Syu --noconfirm
-RUN pacman -S ponysay --noconfirm
+ARG VERSION
 
-CMD ["/usr/bin/ponysay", "Hey, netology"]
+RUN yum install wget -y \
+ && yum install perl-Digest-SHA -y \
+ && wget -q https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.15.2-linux-x86_64.tar.gz \
+ && wget -q https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.15.2-linux-x86_64.tar.gz.sha512 \
+ && shasum -a 512 -c elasticsearch-7.15.2-linux-x86_64.tar.gz.sha512 \
+ && tar -xzf elasticsearch-7.15.2-linux-x86_64.tar.gz \
+ && rm elasticsearch-7.15.2-linux-x86_64.tar.gz
+
+COPY elasticsearch.yml /elasticsearch-7.15.2/config
+
+RUN mkdir /var/lib/logs \
+ && mkdir /var/lib/data
+
+RUN groupadd elasticsearch \
+ && useradd elasticsearch -g elasticsearch \
+ && chown -R elasticsearch:elasticsearch /elasticsearch-7.15.2 \
+ && chown -R elasticsearch:elasticsearch /var/lib/logs \
+ && chown -R elasticsearch:elasticsearch /var/lib/data
+
+USER elasticsearch
+EXPOSE 9200
+
+ENTRYPOINT ["/elasticsearch-7.15.2/bin/elasticsearch"]
 ```
 
-Запуск билда образа  
-**# docker build -t pony_arch -f dockerfile .**  
+На хостовой машине предварительно создаем файл elasticsearch.yml со следующим содержимым
+```
+node.name: netology_test
 
-Запуск контейнера в интерактивном режиме, который удалится после завершения работы  
-**# docker run -ti --rm --name pony pony_arch**  
+path.data: /var/lib/data
+path.logs: /var/lib/logs
+```
 
-Вывод программы  
-https://github.com/SuhodolovaO/devops-netology/blob/main/pony.png
+Билд и запуск  
+**# docker build -t elasticsearch -f elasticsearch_dockerfile .**  
+**# docker run -d -p 9200:9200 --rm --name elasticsearch elasticsearch**  
 
-Создание образа с тегом и отправка в репозиторий  
-**# docker image tag pony_arch suhodolovao/netology:dz-5.4-pony**  
-**# docker image push suhodolovao/netology:dz-5.4-pony**  
+Вывод на запрос пути /
+```
+# curl localhost:9200
+{
+  "name" : "netology_test",
+  "cluster_name" : "elasticsearch",
+  "cluster_uuid" : "LDSPNXq8SR-zB-HPUiNxVg",
+  "version" : {
+    "number" : "7.15.2",
+    "build_flavor" : "default",
+    "build_type" : "tar",
+    "build_hash" : "93d5a7f6192e8a1a12e154a2b81bf6fa7309da0c",
+    "build_date" : "2021-11-04T14:04:42.515624022Z",
+    "build_snapshot" : false,
+    "lucene_version" : "8.9.0",
+    "minimum_wire_compatibility_version" : "6.8.0",
+    "minimum_index_compatibility_version" : "6.0.0-beta1"
+  },
+  "tagline" : "You Know, for Search"
+}
+```
 
-Ссылка на образ  
-https://hub.docker.com/layers/suhodolovao/netology/dz-5.4-pony/images/sha256-8b15c3c6900d9782eb6668980e5c469983abd20c0e5c94e79dc0fc0ffe7e5642
+Ссылка на репозиторий  
+https://hub.docker.com/layers/suhodolovao/netology/dz-6.5-elasticsearch/images/sha256-b4c20b5e92694fb1c1edb5018aab529505aa8f231b22a6256b5efc302525a93f
 
 ### Задача 2
 
-**Jenkins на amazoncorreto**  
+Создание индексов  
+**# curl -X PUT "localhost:9200/ind-1" -H 'Content-Type: application/json' -d  '{"settings": {"index": {"number_of_replicas": 0,"number_of_shards": 1}}}'**  
+**# curl -X PUT "localhost:9200/ind-2" -H 'Content-Type: application/json' -d  '{"settings": {"index": {"number_of_replicas": 1,"number_of_shards": 2}}}'**  
+**# curl -X PUT "localhost:9200/ind-3" -H 'Content-Type: application/json' -d  '{"settings": {"index": {"number_of_replicas": 2,"number_of_shards": 4}}}'**  
 
-Dockerfile
+Получение списка индексов  
 ```
-FROM amazoncorretto
-
-ARG JENKINS_VERSION
-ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
-
-RUN mkdir -p /usr/share/jenkins \
- && curl -fsSL ${JENKINS_URL} -o /usr/share/jenkins/jenkins.war
-
-EXPOSE 8080
-
-CMD ["java", "-jar", "/usr/share/jenkins/jenkins.war"]
+# curl localhost:9200/_cat/indices
+green  open .geoip_databases A_bC5a6MSr-q3Izj5N0Apg 1 0 42 0 40.6mb 40.6mb
+green  open ind-1            FyTdO6OHSvCfID6QbuhTOQ 1 0  0 0   208b   208b
+yellow open ind-3            Phjay7ICTV6YvgO4sQN3Og 4 2  0 0   832b   832b
+yellow open ind-2            TEFSbhirSNubN3HyGOIL4g 2 1  0 0   416b   416b
 ```
 
-Команда для билда  
-**# docker build --build-arg JENKINS_VERSION=2.303.2 -t jenkins:ver1 -f dockerfile_jenkins_amazon .**  
-
-Команда запуска  
-**# docker run -ti -p 8080:8080 --name ja jenkins:ver1**  
-
-Вывод в логах  
-https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_logs_ver1.png  
-
-Вывод в браузере  
-https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_screen_ver1.png  
-
-Ссылка на образ  
-https://hub.docker.com/layers/suhodolovao/netology/dz-5.4-ver1/images/sha256-d484c74177099beb580214221c986dcc2bd6588b1eebfe75b4f880d22e2fba0b
-
-
-
-**Jenkins на ubuntu**  
-
-Dockerfile
+Получение состояния индексов
 ```
-FROM ubuntu:latest
+# curl localhost:9200/_cluster/health/ind-1?pretty
+{
+  "cluster_name" : "elasticsearch",
+  "status" : "green",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 1,
+  "active_shards" : 1,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 0,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 100.0
+}
 
-ARG JENKINS_VERSION
-ARG JENKINS_URL=https://repo.jenkins-ci.org/public/org/jenkins-ci/main/jenkins-war/${JENKINS_VERSION}/jenkins-war-${JENKINS_VERSION}.war
+# curl localhost:9200/_cluster/health/ind-2?pretty
+{
+  "cluster_name" : "elasticsearch",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 2,
+  "active_shards" : 2,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 2,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 44.44444444444444
+}
 
-RUN apt-get update \
- && apt-get install -y openjdk-11-jdk \
- && apt-get install -y curl \
- && mkdir -p /usr/share/jenkins \
- && curl -fsSL ${JENKINS_URL} -o /usr/share/jenkins/jenkins.war
-
-EXPOSE 8080
-
-CMD ["java", "-jar", "/usr/share/jenkins/jenkins.war"]
+# curl localhost:9200/_cluster/health/ind-3?pretty
+{
+  "cluster_name" : "elasticsearch",
+  "status" : "yellow",
+  "timed_out" : false,
+  "number_of_nodes" : 1,
+  "number_of_data_nodes" : 1,
+  "active_primary_shards" : 4,
+  "active_shards" : 4,
+  "relocating_shards" : 0,
+  "initializing_shards" : 0,
+  "unassigned_shards" : 8,
+  "delayed_unassigned_shards" : 0,
+  "number_of_pending_tasks" : 0,
+  "number_of_in_flight_fetch" : 0,
+  "task_max_waiting_in_queue_millis" : 0,
+  "active_shards_percent_as_number" : 44.44444444444444
+}
 ```
 
-Команда для билда  
-**# docker build --build-arg JENKINS_VERSION=2.303.2 -t jenkins:ver2 -f dockerfile_jenkins_ubuntu .**  
+Получение состояние кластера  
+```
+# curl localhost:9200/_cluster/health?pretty
+{
+   "cluster_name":"elasticsearch",
+   "status":"yellow",
+   "timed_out":false,
+   "number_of_nodes":1,
+   "number_of_data_nodes":1,
+   "active_primary_shards":8,
+   "active_shards":8,
+   "relocating_shards":0,
+   "initializing_shards":0,
+   "unassigned_shards":10,
+   "delayed_unassigned_shards":0,
+   "number_of_pending_tasks":0,
+   "number_of_in_flight_fetch":0,
+   "task_max_waiting_in_queue_millis":0,
+   "active_shards_percent_as_number":44.44444444444444
+}
+```
 
-Команда запуска  
-**# docker run -ti -p 5432:8080 --name jenkins2 jenkins:ver2**  
+Два индекса и кластер находятся в состоянии yellow, потому что у них указано число реплик 2 и 4, хотя в кластере всего одна нода, и реплики создавать негде.
 
-Вывод в логах  
-https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_logs_ver2.png  
-
-Вывод в браузере  
-https://github.com/SuhodolovaO/devops-netology/blob/main/jenkins_screen_ver2.png  
-
-Ссылка на образ  
-https://hub.docker.com/layers/suhodolovao/netology/dz-5.4-ver2/images/sha256-23f420a5c133c10b11d4807b34a014fb0d5e48439369157ee3bfbeb18a417e15
+Удаление индексов
+```
+# curl -X DELETE "localhost:9200/ind-1"
+{"acknowledged":true}
+# curl -X DELETE "localhost:9200/ind-2"
+{"acknowledged":true}
+# curl -X DELETE "localhost:9200/ind-3"
+{"acknowledged":true}
+```
 
 ### Задача 3
-Dockerfile
+
+Предварительно добавляем настройку **path.repo: /elasticsearch-7.15.2/snapshots** в elasticsearch.yml и пересоздаем образ elasticsearch.  
+
+Создание репозитория  
 ```
-FROM node:latest
-
-WORKDIR /usr/share/simplicitesoftware
-
-RUN curl -fsSL https://codeload.github.com/simplicitesoftware/nodejs-demo/zip/refs/heads/master -o master.zip \
- && unzip master.zip
-
-WORKDIR /usr/share/simplicitesoftware/nodejs-demo-master
-
-RUN npm install
-
-EXPOSE 3000
-
-ENTRYPOINT ["npm"]
-CMD ["start"]
+# curl -X PUT "localhost:9200/_snapshot/netology_backup" -H 'Content-Type: application/json' -d'{"type": "fs","settings": {"location": "/elasticsearch-7.15.2/snapshots"}}'
+{"acknowledged":true}
 ```
 
-Билд образа и запуск контейнера simplicite  
-**# docker build -t simplicite -f dockerfile_simplicite .**  
-**# docker run -d -p 3000:3000 --name simplicite simplicite**  
-
-Запуск ubuntu  
-**# docker run -d -ti --name ubuntu ubuntu:latest**  
-
-Создание сети  
-**# docker network create test-net**  
-**# docker network connect test-net simplicite**  
-**# docker network connect test-net ubuntu**  
-
-Получившаяся конфигурация сети test-net  
+Создание индекса test
 ```
-# docker network inspect test-net
-[
-    {
-        "Name": "test-net",
-        "Id": "bf9efd4455293b1e388637791c22b3bc8bc44258d32c4efa90de59947b57bfc0",
-        "Created": "2021-11-04T18:25:35.948463251Z",
-        "Scope": "local",
-        "Driver": "bridge",
-        "EnableIPv6": false,
-        "IPAM": {
-            "Driver": "default",
-            "Options": {},
-            "Config": [
-                {
-                    "Subnet": "172.18.0.0/16",
-                    "Gateway": "172.18.0.1"
-                }
+# curl -X PUT "localhost:9200/test" -H 'Content-Type: application/json' -d  '{"settings": {"index": {"number_of_replicas": 0,"number_of_shards": 1}}}'
+{"acknowledged":true,"shards_acknowledged":true,"index":"test"}
+# curl localhost:9200/_cat/indices
+green open .geoip_databases 8Qtg1sUaQhaO0szPpxwMIQ 1 0 42 0 40.6mb 40.6mb
+green open test             QqE6-oH7QxKrXm3I9W2NrQ 1 0  0 0   208b   208b
+```
+
+Создание снапшота
+```
+# curl -X PUT "localhost:9200/_snapshot/netology_backup/test_snapshot?wait_for_completion=true&pretty"
+{
+   "snapshot":{
+      "snapshot":"test_snapshot",
+      "uuid":"TFJ8o08TSmi6h6QD62mX5Q",
+      "repository":"netology_backup",
+      "version_id":7150299,
+      "version":"7.15.2",
+      "indices":[
+         "test",
+         ".geoip_databases"
+      ],
+      "data_streams":[
+         
+      ],
+      "include_global_state":true,
+      "state":"SUCCESS",
+      "start_time":"2021-11-13T12:43:02.434Z",
+      "start_time_in_millis":1636807382434,
+      "end_time":"2021-11-13T12:43:04.240Z",
+      "end_time_in_millis":1636807384240,
+      "duration_in_millis":1806,
+      "failures":[
+         
+      ],
+      "shards":{
+         "total":2,
+         "failed":0,
+         "successful":2
+      },
+      "feature_states":[
+         {
+            "feature_name":"geoip",
+            "indices":[
+               ".geoip_databases"
             ]
-        },
-        "Internal": false,
-        "Attachable": false,
-        "Ingress": false,
-        "ConfigFrom": {
-            "Network": ""
-        },
-        "ConfigOnly": false,
-        "Containers": {
-            "47499c885505b6c53e0dcaeabe57051b5a6ceaf3f017a6db95e2f9f1bc8ec849": {
-                "Name": "simplicite",
-                "EndpointID": "cfffd79accd91fb157352bf007773319262746c19e9cd757cab20218ecfe10a4",
-                "MacAddress": "02:42:ac:12:00:02",
-                "IPv4Address": "172.18.0.2/16",
-                "IPv6Address": ""
-            },
-            "6b5691c09c912f7f725fd3cfb3e962a366d0a859fa8f9eadbc0131a84a5597b1": {
-                "Name": "ubuntu",
-                "EndpointID": "77ec324c5134ba93a50caff9670348d3a08882957b45fe38c4bc006459ca7785",
-                "MacAddress": "02:42:ac:12:00:03",
-                "IPv4Address": "172.18.0.3/16",
-                "IPv6Address": ""
-            }
-        },
-        "Options": {},
-        "Labels": {}
-    }
-]
+         }
+      ]
+   }
+}
 ```
 
-Обращение к приложению simplicite из контейнера ubuntu  
-**# docker exec -ti ubuntu bash**  
-**# apt-get update && apt-get install curl**  
-**# curl 172.18.0.2:3000 | head -c 500**
+Список файлов в репозитории
+```
+# docker exec -ti elasticsearch bash
+$ ll /elasticsearch-7.15.2/snapshots
+-rw-r--r-- 1 elasticsearch elasticsearch   831 Nov 13 12:43 index-0
+-rw-r--r-- 1 elasticsearch elasticsearch     8 Nov 13 12:43 index.latest
+drwxr-xr-x 4 elasticsearch elasticsearch  4096 Nov 13 12:43 indices
+-rw-r--r-- 1 elasticsearch elasticsearch 27617 Nov 13 12:43 meta-TFJ8o08TSmi6h6QD62mX5Q.dat
+-rw-r--r-- 1 elasticsearch elasticsearch   440 Nov 13 12:43 snap-TFJ8o08TSmi6h6QD62mX5Q.dat
+```
 
-Результат
-https://github.com/SuhodolovaO/devops-netology/blob/main/networking.png
+Удаление индекса test и создание индекса test-2  
+```
+# curl -X DELETE "localhost:9200/test"
+{"acknowledged":true}
+# curl -X PUT "localhost:9200/test-2" -H 'Content-Type: application/json' -d  '{"settings": {"index": {"number_of_replicas": 0,"number_of_shards": 1}}}'
+{"acknowledged":true,"shards_acknowledged":true,"index":"test-2"}
+# curl localhost:9200/_cat/indices
+green open test-2           kac6p70CT_Wa2-4an4xceQ 1 0  0 0   208b   208b
+green open .geoip_databases vzWujUNdQCKXhlOk21XN6A 1 0 42 0 40.6mb 40.6mb
+```
+
+Восстановление состояния кластера
+```
+# curl -X POST "localhost:9200/_snapshot/netology_backup/test_snapshot/_restore" -H 'Content-Type: application/json' -d'{"include_global_state": "true"}'
+{"accepted" : true}
+# curl localhost:9200/_cat/indices
+green open test-2           wu10ciUCSNuR2ePyQfKQWw 1 0  0 0   208b   208b
+green open .geoip_databases 4GretJ-0SNa2ln3uayc6og 1 0 42 0 40.6mb 40.6mb
+green open test             BL1Xlt44RPSK3TQntzYAdA 1 0  0 0   208b   208b
+```
+
+Параметр **"include_global_state"** в команде восстановления кластера указан для обхода проблемы, описанной здесь https://github.com/elastic/elasticsearch/issues/78320  
+Другой вариант восстановления в данном случае - указать имя отдельного индекса для восстановления **-d'{"indices": "test"}'**
