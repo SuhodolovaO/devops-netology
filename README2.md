@@ -1,67 +1,35 @@
-### 1. 
-После выполнения скрипта будет выдана ошибка выполнения при попытке сложить операнды разных типов.  
-Чтобы получить в переменной **с** значение '12' нужно привести переменную **a** к строковому типу  
-```
-c = str(a) + b
-```
-Чтобы получить в переменной **с** значение 3 нужно привести переменную **b** к целочисленному типу  
-```
-c = a + int(b)
-```
+### Задача 1
 
-### 2. 
+Поиск запросов, выполняющихся более 3 минут    
+**db.adminCommand( { currentOp: true, "active" : true, "secs_running" : { "$gt" : 180 } } )**  
 
-Доработанный вариант скрипта  
-```
-#!/usr/bin/env python3
+Из ответа команды currentOp берем значение opid проблемного запроса и подставляем в следующую команду  
+**db.adminCommand( { "killOp": 1, "op": <opid> } )**
 
-import os
+Для решения проблемы зависающих запросов можно:  
+- предложить разработчикам ограничивать время тяжелых запросов с помощью добавления метода cursor.maxTimeMS()  
+- использовать метод explain() для анализа выполнения и возможной оптимизации таких запросов  
 
-bash_command = ["cd ~/netology/sysadm-homeworks", "git status"]
-result_os = os.popen(' && '.join(bash_command)).read()
-path = os.getcwd()
-for result in result_os.split('\n'):
-    if result.find('modified') != -1:
-        prepare_result = result.replace('\tmodified:   ', '')
-        print('/'.join([path, prepare_result]))
-```
+### Задача 2
 
-### 3.
-```
-#!/usr/bin/env python3
+Причина может быть в том, что в хранилище Redis образовалось слишком много истекших ключей одновременно.  
+Redis периодически производит процесс очитски истекших ключей среди рандомно выбранных записей в количестве ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP (по умолчанию 20).
+Если количество истекших ключей при каждом цикле очистки истекших данных превышает 25%, Redis может зациклиться в этом процессе и блокировать операции записи.  
+Для разрешения таких ситуаций можно увеличить параметр ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP, что позволит снизить вероятность зацикливания в процессе очитски.
 
-import os
-import sys
+### Задача 3
 
-repo_path = sys.argv[1]
-bash_command = ["cd " + repo_path, "git status"]
-result_os = os.popen(' && '.join(bash_command)).read()
-path = os.getcwd()
-for result in result_os.split('\n'):
-    if result.find('modified') != -1:
-        prepare_result = result.replace('\tmodified:   ', '')
-        print('/'.join([path, prepare_result]))
-```
+Вероятно, при росте количества записей запросы стали выполняться слишком долго и возвращать слишком много данных, которые не успевают передаваться в ответе за время, указанное в настройке net_read_timeout.  
+Локализовать проблемные запросы можно через механизм slow_log.  
+Для решения проблемы можно:
+- увеличить таймауты в настройках net_read_timeout, connect_timeout
+- настроить гис-систему на более ограниченную выборку данных
 
-### 4.
-```
-#!/usr/bin/env python3
+### Задача 4
 
-import socket
-import time
+ОС завершает работу PostgreSQL из за нехватки оперативной памяти
 
-urls_ip = {'drive.google.com':'', 'mail.google.com':'', 'google.com':''}
-
-while(True):
-  for url in urls_ip.keys():
-    ip = socket.gethostbyname(url)
-    if(ip == urls_ip[url]):
-      print(f'{url} - {ip}')
-    else:
-      if(urls_ip[url] != ''):
-        print(f'[ERROR] {url} IP mismatch: {urls_ip[url]} {ip}')
-      urls_ip[url] = ip
-
-  time.sleep(60)
-```
-Бесконечный цикл добавлен для наглядности. В реальности можно запускать скрипт через cron, тогда можно будет убрать инструкции while(True) и time.sleep
+Возможные решения:
+- добавить оперативной памяти на сервере
+- отключить использование huge_pages в настройках PostgreSQL или в ядре ОС
+- применить горизонтальный шардинг для распределения данных по нескольким серверам
