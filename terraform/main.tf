@@ -1,7 +1,3 @@
-### Задача 2
-
-Содержимое main.tf
-```
 provider "aws" {
    region = "eu-north-1"
 }
@@ -50,15 +46,3 @@ resource "aws_instance" "netology-2" {
 	ami = each.value
 	instance_type = each.key
 }
-```
-
-Вывод списка воркспейсов
-```
-$ terraform workspace list
-  default
-* prod
-  stage
-```
-
-Вывести результат команды **terraform plan** не получается, т.к. возникли проблемы с банковской картой при регистрации в AWS
-  
