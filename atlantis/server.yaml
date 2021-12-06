@@ -1,0 +1,13 @@
+repos:
+    - id: github.com/SuhodolovaO/devops-netology
+      workflow: custom
+      allowed_overrides: [workflow]
+      allowed_workflows: [custom]
+    
+    workflows:
+        custom:
+        plan:
+          steps:
+          - init
+          - plan:
+              extra_args: ["-lock", "false"]
