@@ -1,0 +1,7 @@
+ssh_pwauth: no
+users:
+  - name: yc-user
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC9HiWdwZfxzh+OQai0PNPD5UPHnTBJjdIjA+AL+PIXDZx3UD3ebSjXycaSmuHDHHIW404+Ia>47M6aLcYX0DGdwaSNTxZGO1E2g2P73bb7yW9Ui6soIWnNViIcLlYf7vQoiTPnb81IkzWfuSfk8AsTwoyEgixwpNBhyKlSuHeabToY5FbtI+rU18q9KBgItwctOGchlt8b53t5NCP2Fo+ZmOl9gMeaNcOfURiKpqPGPDKEXMDBldMyIOq+pSZwGf1cm6VbAVgaS5/RFm+Dsn7RWG9UyajWaHkeLbk9rJCag68mmJmw9v59mHRqTKPglzYJPAXcHEr4I0f vagrant@vagrant"
