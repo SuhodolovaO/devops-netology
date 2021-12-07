@@ -1,35 +1,119 @@
-### Задача 1
-
-Поиск запросов, выполняющихся более 3 минут    
-**db.adminCommand( { currentOp: true, "active" : true, "secs_running" : { "$gt" : 180 } } )**  
-
-Из ответа команды currentOp берем значение opid проблемного запроса и подставляем в следующую команду  
-**db.adminCommand( { "killOp": 1, "op": <opid> } )**
-
-Для решения проблемы зависающих запросов можно:  
-- предложить разработчикам ограничивать время тяжелых запросов с помощью добавления метода cursor.maxTimeMS()  
-- использовать метод explain() для анализа выполнения и возможной оптимизации таких запросов  
-
-### Задача 2
-
-Причина может быть в том, что в хранилище Redis образовалось слишком много истекших ключей одновременно.  
-Redis периодически производит процесс очитски истекших ключей среди рандомно выбранных записей в количестве ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP (по умолчанию 20).
-Если количество истекших ключей при каждом цикле очистки истекших данных превышает 25%, Redis может зациклиться в этом процессе и блокировать операции записи.  
-Для разрешения таких ситуаций можно увеличить параметр ACTIVE_EXPIRE_CYCLE_LOOKUPS_PER_LOOP, что позволит снизить вероятность зацикливания в процессе очитски.
-
 ### Задача 3
 
-Вероятно, при росте количества записей запросы стали выполняться слишком долго и возвращать слишком много данных, которые не успевают передаваться в ответе за время, указанное в настройке net_read_timeout.  
-Локализовать проблемные запросы можно через механизм slow_log.  
-Для решения проблемы можно:
-- увеличить таймауты в настройках net_read_timeout, connect_timeout
-- настроить гис-систему на более ограниченную выборку данных
+Перевод метров в футы
+```
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Print("Enter a number: ")
+	var meters float64
+	fmt.Scanf("%f", &meters)
+
+	feet := GetFeetFromMeters(meters)
+
+	fmt.Printf("%.4f meters is %.4f feet\n", meters, feet)
+}
+
+func GetFeetFromMeters(meters float64) float64 {
+	return meters / 0.3048
+}
+```
+
+Поиск наименьшего элемента
+```
+package main
+
+import "fmt"
+
+func main() {
+    x := []int{48,96,86,68,57,82,63,70,37,34,83,27,19,97,9,17}
+    result, err := getSmallestElement(x)
+
+    if err != nil {
+        fmt.Println(err)
+    } else {
+        fmt.Println(result)
+    }
+}
+
+func getSmallestElement(list []int) (int, error) {
+    if len(list) == 0 {
+        return 0, fmt.Errorf("Array is empty!")
+    }
+
+    var smallest = list[0]
+    for _, value := range list {
+        if value < smallest {
+            smallest = value
+        }
+    }
+    return smallest, nil
+}
+```
+
+Вывод чисел от 1 до 100, которые делятся на 3
+```
+package main
+
+import "fmt"
+
+func main() {
+	maxValues := 100
+	numbers := GetNumbersDividedByThree(maxValues)
+	fmt.Println(numbers)
+}
+
+func GetNumbersDividedByThree(maxValues int) []int  {
+	numbers := []int{}
+	for i :=0; i <= maxValues; i++ {
+		if i%3 == 0 {
+			numbers = append(numbers, i)
+		}
+	}
+	return numbers
+}
+```
 
 ### Задача 4
 
-ОС завершает работу PostgreSQL из за нехватки оперативной памяти
+Тест перевода метров в футы
+```
+package main
+import "testing"
 
-Возможные решения:
-- добавить оперативной памяти на сервере
-- отключить использование huge_pages в настройках PostgreSQL или в ядре ОС
-- применить горизонтальный шардинг для распределения данных по нескольким серверам
+func testMain(t *testing.T) {
+	feet := GetFeetFromMeters(10)
+	if feet != 32.808399 {
+		t.Error("Expected 32.808399, got ", feet)
+	}
+}
+```
+
+Тест поиска наименьшего элемента
+```
+package main
+import "testing"
+
+func testMain(t *testing.T) {
+	x := []int{1,2,3}
+	smallest, err := getSmallestElement(x)
+	if smallest != 1 {
+		t.Error("Expected 1, got ", smallest)
+	}
+}
+```
+
+Тест вывода чисел, кратных 3
+```
+package main
+import "testing"
+
+func testMain(t *testing.T) {
+	numbers := GetNumbersDividedByThree(10)
+	if (len(numbers) != 4 || numbers[0] != 0 || numbers[1] != 3 || numbers[2] != 6 || numbers[3] != 9) {
+		t.Error("Unexpected result ", numbers)
+	}
+}
+```
